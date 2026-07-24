@@ -1,0 +1,63 @@
+name: Build Unsigned DMG
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-unsigned-dmg:
+    runs-on: macos-26
+    env:
+      APP_NAME: Thaw.app
+      DMG_NAME: Thaw-unsigned.dmg
+      DERIVED_DATA: Build
+    steps:
+      - uses: actions/checkout@v7
+
+      # Keep parity with existing CI/build workflows.
+      - run: sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+
+      - name: Build unsigned app
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project Thaw.xcodeproj \
+            -scheme Thaw \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Package unsigned DMG
+        run: |
+          set -euo pipefail
+          APP_PATH="$DERIVED_DATA/Build/Products/Release/$APP_NAME"
+          test -d "$APP_PATH"
+
+          STAGING="$RUNNER_TEMP/dmg-staging"
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING"
+          cp -R "$APP_PATH" "$STAGING/$APP_NAME"
+          ln -s /Applications "$STAGING/Applications"
+
+          create-dmg \
+            --volname "Thaw" \
+            --background "Resources/background@2x.png" \
+            --window-size 582 300 \
+            --icon-size 100 \
+            --hide-extension "$APP_NAME" \
+            --icon "$APP_NAME" 150 150 \
+            --icon "Applications" 436 150 \
+            "build/$DMG_NAME" \
+            "$STAGING"
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v7
+        with:
+          name: Thaw-unsigned-dmg
+          path: build/${{ env.DMG_NAME }}
+          retention-days: 7
