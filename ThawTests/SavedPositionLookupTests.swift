@@ -114,4 +114,33 @@ final class SavedPositionLookupTests: XCTestCase {
         )
         XCTAssertNil(result)
     }
+
+    /// A title-churned identifier falls back to namespace matching when
+    /// exactly one saved item exists for that namespace.
+    func testNamespaceFallbackForSingleItemNamespace() {
+        let saved: [String: [String]] = [
+            "visible": ["com.flexibits.fantastical2.mac.helper:Meeting in 5m"],
+        ]
+        let result = LayoutSolver.savedPositionByBaseID(
+            for: "com.flexibits.fantastical2.mac.helper:Team Sync 14:30",
+            in: saved
+        )
+        XCTAssertEqual(result, LayoutSolver.SavedPosition(section: .visible, index: 0))
+    }
+
+    /// Namespace fallback is disabled when multiple saved items share a
+    /// namespace to avoid ambiguous cross-item attribution.
+    func testNamespaceFallbackIgnoredWhenNamespaceIsAmbiguous() {
+        let saved: [String: [String]] = [
+            "visible": [
+                "com.example.app:Status One",
+                "com.example.app:Status Two",
+            ],
+        ]
+        let result = LayoutSolver.savedPositionByBaseID(
+            for: "com.example.app:Completely New Title",
+            in: saved
+        )
+        XCTAssertNil(result)
+    }
 }

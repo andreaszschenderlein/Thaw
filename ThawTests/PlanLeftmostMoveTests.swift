@@ -132,6 +132,32 @@ final class PlanLeftmostMoveTests: XCTestCase {
         XCTAssertEqual(decision, .noop(reason: .noNewCandidate))
     }
 
+    /// A saved item whose live title changed (e.g. dynamic badge or upcoming
+    /// event text) should still be treated as saved when the namespace is unique.
+    func testHideableItemWithSavedSectionAndChangedTitleIsDeferred() {
+        let app = leftmostItem(
+            tag: appTag("com.flexibits.fantastical2.mac.helper", "Team Sync 14:30"),
+            x: 200,
+            windowID: 7021
+        )
+
+        let decision = LayoutSolver.planLeftmostMove(
+            items: [app],
+            observation: LayoutSolver.LeftmostObservation(
+                hiddenBounds: hiddenBounds,
+                sectionByWindowID: [app.windowID: .visible],
+                previousWindowIDs: []
+            ),
+            savedSectionOrder: ["hidden": ["com.flexibits.fantastical2.mac.helper:Meeting in 5m"]],
+            knownItemIdentifiers: [],
+            hiddenTags: [],
+            alwaysHiddenTags: [],
+            effectiveNewItemsSection: .hidden
+        )
+
+        XCTAssertEqual(decision, .noop(reason: .noNewCandidate))
+    }
+
     /// A hideable item with unresolved sourcePID short-circuits the
     /// candidate-selection cascade. The planner returns .noop with the
     /// unresolvedSourcePID reason.

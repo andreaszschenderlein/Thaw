@@ -292,23 +292,40 @@ enum LayoutSolver {
 
         // Build identifier → section lookup over savedSectionOrder.
         var savedSectionForIdentifier = [String: MenuBarSection.Name]()
+        var savedCountByNamespace = [String: Int]()
+        var savedSectionForNamespace = [String: MenuBarSection.Name]()
         for (sectionKeyString, identifiers) in savedSectionOrder {
             guard let section = sectionName(forPersistedKey: sectionKeyString) else { continue }
             for identifier in identifiers {
                 savedSectionForIdentifier[identifier] = section
+                if let namespace = namespacePrefix(forIdentifier: identifier) {
+                    savedCountByNamespace[namespace, default: 0] += 1
+                    savedSectionForNamespace[namespace] = savedSectionForNamespace[namespace] ?? section
+                }
+            }
+        }
+        var knownCountByNamespace = [String: Int]()
+        for identifier in knownItemIdentifiers {
+            if let namespace = namespacePrefix(forIdentifier: identifier) {
+                knownCountByNamespace[namespace, default: 0] += 1
             }
         }
 
         let candidate = hideableLeftmost.first { item in
             let identifier = "\(item.tag.namespace):\(item.tag.title)"
+            let namespace = String(describing: item.tag.namespace)
 
             // Items with a saved section belong to restoreItemsToSaved-
             // Sections, not to the new-item relocation path.
             let hasSavedSection = savedSectionForIdentifier[identifier] != nil ||
-                savedSectionForIdentifier[item.uniqueIdentifier] != nil
+                savedSectionForIdentifier[item.uniqueIdentifier] != nil ||
+                (savedCountByNamespace[namespace] == 1 && savedSectionForNamespace[namespace] != nil)
             guard !hasSavedSection else { return false }
 
-            let isNewIdentity = !knownItemIdentifiers.contains(identifier)
+            let isKnownIdentity = knownItemIdentifiers.contains(identifier) ||
+                knownItemIdentifiers.contains(item.uniqueIdentifier) ||
+                knownCountByNamespace[namespace] == 1
+            let isNewIdentity = !isKnownIdentity
             let notPlacedHidden = !hiddenTags.contains(item.tag) && !alwaysHiddenTags.contains(item.tag)
 
             // When isNewIdentity is true but the windowID has been seen
@@ -719,6 +736,10 @@ enum LayoutSolver {
         }
         let baseID = uid.split(separator: ":", maxSplits: 2).prefix(2).joined(separator: ":")
         guard baseID.contains(":") else { return nil }
+        guard let namespace = namespacePrefix(forIdentifier: uid) else { return nil }
+
+        var namespaceCount = 0
+        var uniqueNamespaceMatch: SavedPosition?
         for (sectionKeyString, identifiers) in savedSectionOrder {
             guard let section = sectionName(forPersistedKey: sectionKeyString) else { continue }
             for (index, identifier) in identifiers.enumerated() {
@@ -726,7 +747,14 @@ enum LayoutSolver {
                 if savedBaseID == baseID {
                     return SavedPosition(section: section, index: index)
                 }
+                if namespacePrefix(forIdentifier: identifier) == namespace {
+                    namespaceCount += 1
+                    uniqueNamespaceMatch = SavedPosition(section: section, index: index)
+                }
             }
+        }
+        if namespaceCount == 1 {
+            return uniqueNamespaceMatch
         }
         return nil
     }
@@ -956,6 +984,13 @@ enum LayoutSolver {
     /// Extracts the baseID (namespace:title) prefix from a uniqueIdentifier.
     private static nonisolated func baseID(forIdentifier id: String) -> String {
         id.split(separator: ":", maxSplits: 2).prefix(2).joined(separator: ":")
+    }
+
+    /// Extracts the namespace prefix (substring before the first colon)
+    /// from a persisted identifier.
+    private static nonisolated func namespacePrefix(forIdentifier id: String) -> String? {
+        guard let colon = id.firstIndex(of: ":") else { return nil }
+        return String(id[..<colon])
     }
 
     /// Maps a persisted section key string to its enum value.
